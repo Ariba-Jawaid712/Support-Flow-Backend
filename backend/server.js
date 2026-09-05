@@ -34,7 +34,7 @@ const io = new Server(server, {
   },
 });
 
-// Attach io to global scope for notification and status broadcasts
+// Attach io to global scope
 global.io = io;
 initSocket(io);
 
@@ -43,7 +43,19 @@ app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// API Health Check
+// ==========================================
+// ROOT ROUTE
+// ==========================================
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'SupportFlow Backend is running',
+  });
+});
+
+// ==========================================
+// API HEALTH CHECK
+// ==========================================
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     success: true,
@@ -52,7 +64,19 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// API Routes
+// Vercel imports the Express app instead of running startServer().
+app.use('/api', async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ==========================================
+// API ROUTES
+// ==========================================
 app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/workers', workerRoutes);
@@ -61,14 +85,19 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/messages', messageRoutes);
 
-// Error Handling Middleware
+// ==========================================
+// ERROR HANDLING
+// ==========================================
 app.use(notFound);
 app.use(errorHandler);
 
-// Seed initial Admin user if not present
+// ==========================================
+// SEED DEFAULT ADMIN
+// ==========================================
 const seedDefaultAdmin = async () => {
   try {
     const adminExists = await User.findOne({ role: 'admin' });
+
     if (!adminExists) {
       await User.create({
         name: 'System Administrator',
@@ -78,33 +107,55 @@ const seedDefaultAdmin = async () => {
         isActive: true,
         workerApprovalStatus: 'None',
       });
-      console.log('[Seed] Default administrator account created: admin@supportflow.com / AdminPassword123!');
+
+      console.log(
+        '[Seed] Default administrator account created: admin@supportflow.com / AdminPassword123!'
+      );
     }
   } catch (err) {
-    console.error('[Seed] Error checking or seeding admin account:', err.message);
+    console.error(
+      '[Seed] Error checking or seeding admin account:',
+      err.message
+    );
   }
 };
 
+// ==========================================
+// START SERVER
+// ==========================================
 const startServer = async (customPort) => {
   await connectDB();
   await seedDefaultAdmin();
 
   const port = customPort || process.env.PORT || 5000;
+
   return new Promise((resolve) => {
     server.listen(port, () => {
-      console.log(`\n=================================================`);
-      console.log(` SupportFlow Server running in ${process.env.NODE_ENV || 'development'} mode on port ${port}`);
+      console.log('\n=================================================');
+      console.log(
+        ` SupportFlow Server running in ${
+          process.env.NODE_ENV || 'development'
+        } mode on port ${port}`
+      );
       console.log(` API Endpoint: http://localhost:${port}/api`);
-      console.log(`=================================================\n`);
+      console.log(` Health Check: http://localhost:${port}/api/health`);
+      console.log('=================================================\n');
+
       resolve(server);
     });
   });
 };
 
+// ==========================================
+// LOCAL DEVELOPMENT
+// ==========================================
 if (require.main === module) {
   startServer();
 }
 
+// ==========================================
+// EXPORTS
+// ==========================================
 module.exports = app;
 module.exports.app = app;
 module.exports.startServer = startServer;
